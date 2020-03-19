@@ -1,0 +1,22 @@
+FROM ubuntu:bionic
+
+RUN apt-get update 
+
+RUN apt-get install -y curl
+
+RUN curl -sL https://deb.nodesource.com/setup_13.x | bash -
+RUN apt-get install -y nodejs
+RUN node -v 
+RUN npm -v 
+RUN npm install async
+RUN npm install request
+
+
+RUN apt install -y libcurl3 libcurl-openssl1.0-dev
+
+
+ENV PATH=$PATH:/sender
+
+WORKDIR /sender
+
+CMD echo "Sender nodejs ok "

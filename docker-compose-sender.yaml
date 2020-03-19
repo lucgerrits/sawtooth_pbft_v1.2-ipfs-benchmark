@@ -1,0 +1,93 @@
+####################################
+#
+#        Test for Sawtooth & IPFS: Sender
+#     - by Luc
+#
+####################################
+version: "2.1"
+
+networks: 
+  my_blockchain_network_pbft:
+    external: true
+
+services:
+
+  #########################################################
+  #
+  #  sender
+  #
+  #########################################################
+
+  sender:
+    networks:
+      - my_blockchain_network_pbft
+    build:
+      context: ./sender/
+      dockerfile: ./Dockerfile
+      args:
+        - http_proxy
+        - https_proxy
+        - no_proxy
+    image: sender
+    container_name: sender
+    volumes:
+      - ./sender:/sender
+    command: |
+      /bin/bash -c "
+         ldconfig
+        ./test.sh <SENDER_TEST_OPTIONS>
+      "
+    stop_signal: SIGKILL
+
+  sender-js:
+    networks:
+      - my_blockchain_network_pbft
+    build:
+      context: ./sender/
+      dockerfile: ./Dockerfile
+      args:
+        - http_proxy
+        - https_proxy
+        - no_proxy
+    image: sender-js
+    container_name: sender-js
+    volumes:
+      - ./sender:/sender
+    command: |
+      /bin/bash -c "
+          node test.js <SENDER_TEST_JS_OPTIONS>
+      "
+    stop_signal: SIGKILL
+
+  # send-one:
+#     networks:
+#       - my_blockchain_network_pbft
+  #   build:
+  #     context: ./sender/
+  #     dockerfile: ./Dockerfile
+  #     args:
+  #       - http_proxy
+  #       - https_proxy
+  #       - no_proxy
+  #   image: sender-0
+  #   container_name: send-one
+  #   volumes:
+  #     - ./sender:/sender
+  #   command: |
+  #     /bin/bash -c "
+  #        ldconfig
+  #       bash send_one.sh
+  #     "
+  #   stop_signal: SIGKILL
+
+
+  # caliper:
+  #   container_name: caliper
+  #   image: hyperledger/caliper:0.2.0
+  #   command: launch master
+  #   environment:
+  #   - CALIPER_BIND_SUT=fabric:1.4.0
+  #   - CALIPER_BENCHCONFIG=benchmarks/scenario/simple/config.yaml
+  #   - CALIPER_NETWORKCONFIG=networks/fabric/fabric-v1.4.1/2org1peergoleveldb/fabric-go.yaml
+  #   volumes:
+  #   - ~/caliper-benchmarks:/hyperledger/caliper/workspace

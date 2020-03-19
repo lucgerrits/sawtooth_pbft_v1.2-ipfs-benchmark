@@ -1,0 +1,17 @@
+
+#bind = [
+#  "network:tcp://127.0.0.1:8800",
+#  "component:tcp://127.0.0.1:4004",
+#  "consensus:tcp://127.0.0.1:5050"
+#]
+
+
+# The host and port for Open TSDB database used for metrics
+opentsdb_url = "http://influxdb:8086"
+
+# The name of the database used for storing metrics
+opentsdb_db = "metrics"
+
+opentsdb_username  = "lrdata"
+
+opentsdb_password  = "lrdata"

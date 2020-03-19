@@ -1,0 +1,3 @@
+[submodule "sawtooth-sdk-python"]
+	path = sawtooth-sdk-python
+	url = https://github.com/hyperledger/sawtooth-sdk-python.git

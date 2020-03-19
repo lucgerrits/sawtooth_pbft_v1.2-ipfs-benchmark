@@ -1,0 +1,744 @@
+####################################
+#
+#        Test for Sawtooth & IPFS: Nodes & stats
+#     - by Luc
+#
+####################################
+  version: "2.1"
+
+  networks: 
+    my_blockchain_network_pbft:
+      ipam:
+        config:
+          - subnet: 10.1.0.0/24
+      name: "my_blockchain_network_pbft"
+
+  services:
+####################################
+#
+#        Stats
+#
+####################################
+    grafana:
+      image: grafana/grafana
+      container_name: grafana
+      ports:
+        - 3000:3000
+      volumes:
+        - ./stats-data/grafana-data:/var/lib/grafana
+      networks:
+        - my_blockchain_network_pbft
+      user: "104" #don't forget to do a chown
+      networks:
+        - my_blockchain_network_pbft
+    influxdb:
+      image: influxdb
+      container_name: influxdb
+      ports: 
+        - 8086:8086
+      expose:
+        - 8086
+      volumes:
+        - ./stats-data/influx-data:/var/lib/influxdb
+      environment:
+        - INFLUXDB_DB=metrics
+        - INFLUXDB_HTTP_AUTH_ENABLED=true
+        - INFLUXDB_ADMIN_USER=admin
+        - INFLUXDB_ADMIN_PASSWORD=admin
+        - INFLUXDB_USER=lrdata
+        - INFLUXDB_USER_PASSWORD=lrdata
+        - INFLUXDB_HTTP_LOG_ENABLED=false
+        - INFLUXDB_DATA_QUERY_LOG_ENABLED=false
+      networks:
+        - my_blockchain_network_pbft
+####################################
+#
+#        Load balancer
+#
+####################################
+    load-balancer:
+      image: nginx:latest
+      container_name: sawtooth-load-balancer
+      volumes:
+        - ./sawtooth-data/nginx-data/nginx.conf:/etc/nginx/nginx.conf
+      ports: 
+        - 8080:8080
+      restart: always
+      networks:
+        my_blockchain_network_pbft:
+          ipv4_address: 10.1.0.222
+####################################
+#
+#        Default nodes
+#
+####################################
+
+    shell:
+      image: hyperledger/sawtooth-shell:chime
+      container_name: sawtooth-shell-default
+      networks:
+        - my_blockchain_network_pbft
+      entrypoint: "bash -c \"\
+          sawtooth keygen && \
+          tail -f /dev/null \
+          \"" 
+    validator-0:
+      image: hyperledger/sawtooth-validator:chime
+      #mem_limit: 1000m
+      container_name: sawtooth-validator-default-0
+      networks:
+        - my_blockchain_network_pbft
+      expose:
+        - 4004
+        - 5050
+        - 8800
+      volumes:
+        - ./sawtooth-data/pbft-shared:/pbft-shared
+        - ./sawtooth-data/sawtooth-validator-data:/var/lib/sawtooth-validator-data
+        - /media/100GB/validator-data/v0:/var/lib/sawtooth/
+      command: |
+        bash -c "
+          if [ -e /pbft-shared/validators/validator-0.priv ]; then
+            cp /pbft-shared/validators/validator-0.pub /etc/sawtooth/keys/validator.pub
+            cp /pbft-shared/validators/validator-0.priv /etc/sawtooth/keys/validator.priv
+          fi &&
+          if [ ! -e /etc/sawtooth/keys/validator.priv ]; then
+            sawadm keygen
+            mkdir -p /pbft-shared/validators || true
+            cp /etc/sawtooth/keys/validator.pub /pbft-shared/validators/validator-0.pub
+            cp /etc/sawtooth/keys/validator.priv /pbft-shared/validators/validator-0.priv
+          fi &&
+          if [ ! -e config-genesis.batch ]; then
+            sawset genesis -k /etc/sawtooth/keys/validator.priv -o config-genesis.batch
+          fi &&
+          while [[ ! -f /pbft-shared/validators/validator-1.pub || \
+                  ! -f /pbft-shared/validators/validator-2.pub || \
+                  ! -f /pbft-shared/validators/validator-3.pub || \
+                  ! -f /pbft-shared/validators/validator-4.pub ]];
+          do sleep 1; done
+          echo sawtooth.consensus.pbft.members=\\['\"'$$(cat /pbft-shared/validators/validator-0.pub)'\"','\"'$$(cat /pbft-shared/validators/validator-1.pub)'\"','\"'$$(cat /pbft-shared/validators/validator-2.pub)'\"','\"'$$(cat /pbft-shared/validators/validator-3.pub)'\"','\"'$$(cat /pbft-shared/validators/validator-4.pub)'\"'\\] &&
+          if [ ! -e config.batch ]; then
+          sawset proposal create \
+              -k /etc/sawtooth/keys/validator.priv \
+              sawtooth.consensus.algorithm.name=pbft \
+              sawtooth.consensus.algorithm.version=1.0 \
+              sawtooth.consensus.pbft.members=\\['\"'$$(cat /pbft-shared/validators/validator-0.pub)'\"','\"'$$(cat /pbft-shared/validators/validator-1.pub)'\"','\"'$$(cat /pbft-shared/validators/validator-2.pub)'\"','\"'$$(cat /pbft-shared/validators/validator-3.pub)'\"','\"'$$(cat /pbft-shared/validators/validator-4.pub)'\"'\\] \
+              sawtooth.publisher.max_batches_per_block=300 \
+              sawtooth.consensus.pbft.block_publishing_delay=1000 \
+              sawtooth.consensus.pbft.idle_timeout=30000 \
+              sawtooth.consensus.pbft.forced_view_change_interval=100 \
+              sawtooth.consensus.pbft.commit_timeout=5000 \
+              sawtooth.consensus.pbft.view_change_duration=5000 \
+              sawtooth.cartp.factory.members='[\"02a47084f6228bf7eb91e1628140f5b717cad1d1166b4ad7665e88204e74f92e5c\"]' \
+              -o config.batch
+          fi &&
+          if [ ! -e /var/lib/sawtooth/genesis.batch ]; then
+            sawadm genesis config-genesis.batch config.batch
+          fi &&
+          if [ ! -e /root/.sawtooth/keys/my_key.priv ]; then
+            sawtooth keygen my_key
+          fi &&
+          cp /var/lib/sawtooth-validator-data/validator.toml /etc/sawtooth/validator.toml && \
+          sawtooth-validator -v \
+            --endpoint tcp://validator-0:8800 \
+            --bind component:tcp://eth0:4004 \
+            --bind consensus:tcp://eth0:5050 \
+            --bind network:tcp://eth0:8800 \
+            --scheduler parallel \
+            --peering static \
+            --maximum-peer-connectivity 10000
+        "
+  
+    validator-1:
+      image: hyperledger/sawtooth-validator:chime
+      #mem_limit: 1000m
+      container_name: sawtooth-validator-default-1
+      networks:
+        - my_blockchain_network_pbft
+      expose:
+        - 4004
+        - 5050
+        - 8800
+      volumes:
+        - ./sawtooth-data/pbft-shared:/pbft-shared
+        - ./sawtooth-data/sawtooth-validator-data:/var/lib/sawtooth-validator-data
+        - /media/100GB/validator-data/v1:/var/lib/sawtooth/
+      command: |
+        bash -c "
+          if [ -e /pbft-shared/validators/validator-1.priv ]; then
+            cp /pbft-shared/validators/validator-1.pub /etc/sawtooth/keys/validator.pub
+            cp /pbft-shared/validators/validator-1.priv /etc/sawtooth/keys/validator.priv
+          fi &&
+          if [ ! -e /etc/sawtooth/keys/validator.priv ]; then
+            sawadm keygen
+            mkdir -p /pbft-shared/validators || true
+            cp /etc/sawtooth/keys/validator.pub /pbft-shared/validators/validator-1.pub
+            cp /etc/sawtooth/keys/validator.priv /pbft-shared/validators/validator-1.priv
+          fi &&
+          sawtooth keygen my_key &&
+          cp /var/lib/sawtooth-validator-data/validator.toml /etc/sawtooth/validator.toml && \
+          sawtooth-validator -v \
+            --endpoint tcp://validator-1:8800 \
+            --bind component:tcp://eth0:4004 \
+            --bind consensus:tcp://eth0:5050 \
+            --bind network:tcp://eth0:8800 \
+            --scheduler parallel \
+            --peering static \
+            --maximum-peer-connectivity 10000 \
+            --peers tcp://validator-0:8800
+        "
+  
+    validator-2:
+      image: hyperledger/sawtooth-validator:chime
+      #mem_limit: 1000m
+      container_name: sawtooth-validator-default-2
+      networks:
+        - my_blockchain_network_pbft
+      expose:
+        - 4004
+        - 5050
+        - 8800
+      volumes:
+        - ./sawtooth-data/pbft-shared:/pbft-shared
+        - ./sawtooth-data/sawtooth-validator-data:/var/lib/sawtooth-validator-data
+        - /media/100GB/validator-data/v2:/var/lib/sawtooth/
+      command: |
+        bash -c "
+          if [ -e /pbft-shared/validators/validator-2.priv ]; then
+            cp /pbft-shared/validators/validator-2.pub /etc/sawtooth/keys/validator.pub
+            cp /pbft-shared/validators/validator-2.priv /etc/sawtooth/keys/validator.priv
+          fi &&
+          if [ ! -e /etc/sawtooth/keys/validator.priv ]; then
+            sawadm keygen
+            mkdir -p /pbft-shared/validators || true
+            cp /etc/sawtooth/keys/validator.pub /pbft-shared/validators/validator-2.pub
+            cp /etc/sawtooth/keys/validator.priv /pbft-shared/validators/validator-2.priv
+          fi &&
+          sawtooth keygen my_key &&
+          cp /var/lib/sawtooth-validator-data/validator.toml /etc/sawtooth/validator.toml && \
+          sawtooth-validator -v \
+            --endpoint tcp://validator-2:8800 \
+            --bind component:tcp://eth0:4004 \
+            --bind consensus:tcp://eth0:5050 \
+            --bind network:tcp://eth0:8800 \
+            --scheduler parallel \
+            --peering static \
+            --maximum-peer-connectivity 10000 \
+            --peers tcp://validator-0:8800 \
+            --peers tcp://validator-1:8800
+        "
+  
+    validator-3:
+      image: hyperledger/sawtooth-validator:chime
+      #mem_limit: 1000m
+      container_name: sawtooth-validator-default-3
+      networks:
+        - my_blockchain_network_pbft
+      expose:
+        - 4004
+        - 5050
+        - 8800
+      volumes:
+        - ./sawtooth-data/pbft-shared:/pbft-shared
+        - ./sawtooth-data/sawtooth-validator-data:/var/lib/sawtooth-validator-data
+        - /media/100GB/validator-data/v3:/var/lib/sawtooth/
+      command: |
+        bash -c "
+          if [ -e /pbft-shared/validators/validator-3.priv ]; then
+          cp /pbft-shared/validators/validator-3.pub /etc/sawtooth/keys/validator.pub
+          cp /pbft-shared/validators/validator-3.priv /etc/sawtooth/keys/validator.priv
+          fi &&
+          if [ ! -e /etc/sawtooth/keys/validator.priv ]; then
+          sawadm keygen
+          mkdir -p /pbft-shared/validators || true
+          cp /etc/sawtooth/keys/validator.pub /pbft-shared/validators/validator-3.pub
+          cp /etc/sawtooth/keys/validator.priv /pbft-shared/validators/validator-3.priv
+          fi &&
+          sawtooth keygen my_key &&
+          cp /var/lib/sawtooth-validator-data/validator.toml /etc/sawtooth/validator.toml && \
+          sawtooth-validator -v \
+            --endpoint tcp://validator-3:8800 \
+            --bind component:tcp://eth0:4004 \
+            --bind consensus:tcp://eth0:5050 \
+            --bind network:tcp://eth0:8800 \
+            --scheduler parallel \
+            --peering static \
+            --maximum-peer-connectivity 10000 \
+            --peers tcp://validator-0:8800 \
+            --peers tcp://validator-1:8800 \
+            --peers tcp://validator-2:8800
+        "
+  
+    validator-4:
+      image: hyperledger/sawtooth-validator:chime
+      #mem_limit: 1000m
+      container_name: sawtooth-validator-default-4
+      networks:
+        - my_blockchain_network_pbft
+      expose:
+        - 4004
+        - 5050
+        - 8800
+      volumes:
+        - ./sawtooth-data/pbft-shared:/pbft-shared
+        - ./sawtooth-data/sawtooth-validator-data:/var/lib/sawtooth-validator-data
+        - /media/100GB/validator-data/v4:/var/lib/sawtooth/
+      command:  |
+        bash -c "
+          if [ -e /pbft-shared/validators/validator-4.priv ]; then
+            cp /pbft-shared/validators/validator-4.pub /etc/sawtooth/keys/validator.pub
+            cp /pbft-shared/validators/validator-4.priv /etc/sawtooth/keys/validator.priv
+          fi &&
+          if [ ! -e /etc/sawtooth/keys/validator.priv ]; then
+            sawadm keygen
+            mkdir -p /pbft-shared/validators || true
+            cp /etc/sawtooth/keys/validator.pub /pbft-shared/validators/validator-4.pub
+            cp /etc/sawtooth/keys/validator.priv /pbft-shared/validators/validator-4.priv
+          fi &&
+          sawtooth keygen my_key &&
+          cp /var/lib/sawtooth-validator-data/validator.toml /etc/sawtooth/validator.toml && \
+          sawtooth-validator -v \
+            --endpoint tcp://validator-4:8800 \
+            --bind component:tcp://eth0:4004 \
+            --bind consensus:tcp://eth0:5050 \
+            --bind network:tcp://eth0:8800 \
+            --scheduler parallel \
+            --peering static \
+            --maximum-peer-connectivity 10000 \
+            --peers tcp://validator-0:8800 \
+            --peers tcp://validator-1:8800 \
+            --peers tcp://validator-2:8800 \
+            --peers tcp://validator-3:8800
+        "
+  
+    rest-api-0:
+      image: hyperledger/sawtooth-rest-api:chime
+      container_name: sawtooth-rest-api-default-0
+      expose:
+        - 8008
+      # ports:
+      #   - 8008:8008
+      volumes:
+        - ./sawtooth-data/rest-api-data:/var/lib/rest-api-data
+      networks:
+        - my_blockchain_network_pbft
+      command: |
+        bash -c "
+          cp /var/lib/rest-api-data/rest_api.toml /etc/sawtooth/rest_api.toml && \
+          sawtooth-rest-api  \
+            --connect tcp://validator-0:4004 \
+            --bind rest-api-0:8008
+        "
+      stop_signal: SIGKILL
+  
+    rest-api-1:
+      image: hyperledger/sawtooth-rest-api:chime
+      container_name: sawtooth-rest-api-default-1
+      expose:
+        - 8008
+      # ports:
+      #   - 8009:8008
+      volumes:
+        - ./sawtooth-data/rest-api-data:/var/lib/rest-api-data
+      networks:
+        - my_blockchain_network_pbft
+      command: |
+        bash -c "
+          cp /var/lib/rest-api-data/rest_api.toml /etc/sawtooth/rest_api.toml && \
+          sawtooth-rest-api  \
+            --connect tcp://validator-1:4004 \
+            --bind rest-api-1:8008
+        "
+      stop_signal: SIGKILL
+  
+    rest-api-2:
+      image: hyperledger/sawtooth-rest-api:chime
+      container_name: sawtooth-rest-api-default-2
+      expose:
+        - 8008
+      # ports:
+      #   - 8010:8008
+      volumes:
+        - ./sawtooth-data/rest-api-data:/var/lib/rest-api-data
+      networks:
+        - my_blockchain_network_pbft
+      command: |
+        bash -c "
+          cp /var/lib/rest-api-data/rest_api.toml /etc/sawtooth/rest_api.toml && \
+          sawtooth-rest-api  \
+            --connect tcp://validator-2:4004 \
+            --bind rest-api-2:8008
+        "
+      stop_signal: SIGKILL
+  
+    rest-api-3:
+      image: hyperledger/sawtooth-rest-api:chime
+      container_name: sawtooth-rest-api-default-3
+      expose:
+        - 8008
+      # ports:
+      #   - 8011:8008
+      volumes:
+        - ./sawtooth-data/rest-api-data:/var/lib/rest-api-data
+      networks:
+        - my_blockchain_network_pbft
+      command: |
+        bash -c "
+          cp /var/lib/rest-api-data/rest_api.toml /etc/sawtooth/rest_api.toml && \
+          sawtooth-rest-api  \
+            --connect tcp://validator-3:4004 \
+            --bind rest-api-3:8008
+        "
+      stop_signal: SIGKILL
+  
+    rest-api-4:
+      image: hyperledger/sawtooth-rest-api:chime
+      container_name: sawtooth-rest-api-default-4
+      expose:
+        - 8008
+      # ports:
+      #   - 8012:8008
+      volumes:
+        - ./sawtooth-data/rest-api-data:/var/lib/rest-api-data
+      networks:
+        - my_blockchain_network_pbft
+      command: |
+        bash -c "
+          cp /var/lib/rest-api-data/rest_api.toml /etc/sawtooth/rest_api.toml && \
+          sawtooth-rest-api  \
+            --connect tcp://validator-4:4004 \
+            --bind rest-api-4:8008
+        "
+      stop_signal: SIGKILL
+  
+    # intkey-tp-0:
+    #   image: hyperledger/sawtooth-intkey-tp-python:chime
+    #   container_name: sawtooth-intkey-tp-python-default-0
+    #   expose:
+    #     - 4004
+    #   networks:
+    #     - my_blockchain_network_pbft
+    #   command: intkey-tp-python -v -C tcp://validator-0:4004
+    #   stop_signal: SIGKILL
+  
+    # intkey-tp-1:
+    #   image: hyperledger/sawtooth-intkey-tp-python:chime
+    #   container_name: sawtooth-intkey-tp-python-default-1
+    #   expose:
+    #     - 4004
+    #   networks:
+    #     - my_blockchain_network_pbft
+    #   command: intkey-tp-python -v -C tcp://validator-1:4004
+    #   stop_signal: SIGKILL
+  
+    # intkey-tp-2:
+    #   image: hyperledger/sawtooth-intkey-tp-python:chime
+    #   container_name: sawtooth-intkey-tp-python-default-2
+    #   expose:
+    #     - 4004
+    #   networks:
+    #     - my_blockchain_network_pbft
+    #   command: intkey-tp-python -v -C tcp://validator-2:4004
+    #   stop_signal: SIGKILL
+  
+    # intkey-tp-3:
+    #   image: hyperledger/sawtooth-intkey-tp-python:chime
+    #   container_name: sawtooth-intkey-tp-python-default-3
+    #   expose:
+    #     - 4004
+    #   networks:
+    #     - my_blockchain_network_pbft
+    #   command: intkey-tp-python -v -C tcp://validator-3:4004
+    #   stop_signal: SIGKILL
+  
+    # intkey-tp-4:
+    #   image: hyperledger/sawtooth-intkey-tp-python:chime
+    #   container_name: sawtooth-intkey-tp-python-default-4
+    #   expose:
+    #     - 4004
+    #   networks:
+    #     - my_blockchain_network_pbft
+    #   command: intkey-tp-python -v -C tcp://validator-4:4004
+    #   stop_signal: SIGKILL
+  
+    cartp-tp-python-0:
+      build:
+        context: ./sawtooth-sdk-python
+        dockerfile: examples/cartp_python/Dockerfile
+      image: cartp-tp-python-local-0
+      volumes:
+        - ./sawtooth-sdk-python/:/project/sawtooth-sdk-python
+      container_name: cartp-tp-python-local-0
+      networks:
+        - my_blockchain_network_pbft
+      command: |
+        bash -c "
+          pwd
+          echo Executing_potogen
+          bin/protogen
+          echo cd_to_cartp_python
+          cd examples/cartp_python
+          python3 setup.py clean --all
+          python3 setup.py build
+          cartp-tp-python -C tcp://validator-0:4004
+        "
+      stop_signal: SIGKILL
+  
+    cartp-tp-python-1:
+      build:
+        context: ./sawtooth-sdk-python
+        dockerfile: examples/cartp_python/Dockerfile
+        args:
+          - http_proxy
+          - https_proxy
+          - no_proxy
+      image: cartp-tp-python-local-1
+      volumes:
+        - ./sawtooth-sdk-python/:/project/sawtooth-sdk-python
+      container_name: cartp-tp-python-local-1
+      networks:
+        - my_blockchain_network_pbft
+      command: |
+        bash -c "
+          pwd
+          echo Executing_potogen
+          bin/protogen
+          echo cd_to_cartp_python
+          cd examples/cartp_python
+          python3 setup.py clean --all
+          python3 setup.py build
+          cartp-tp-python -C tcp://validator-1:4004
+        "
+      stop_signal: SIGKILL
+  
+    cartp-tp-python-2:
+      build:
+        context: ./sawtooth-sdk-python
+        dockerfile: examples/cartp_python/Dockerfile
+        args:
+          - http_proxy
+          - https_proxy
+          - no_proxy
+      image: cartp-tp-python-local-2
+      volumes:
+        - ./sawtooth-sdk-python/:/project/sawtooth-sdk-python
+      container_name: cartp-tp-python-local-2
+      networks:
+        - my_blockchain_network_pbft
+      command: |
+        bash -c "
+          pwd
+          echo Executing_potogen
+          bin/protogen
+          echo cd_to_cartp_python
+          cd examples/cartp_python
+          python3 setup.py clean --all
+          python3 setup.py build
+          cartp-tp-python -C tcp://validator-2:4004
+        "
+      stop_signal: SIGKILL
+  
+    cartp-tp-python-3:
+      build:
+        context: ./sawtooth-sdk-python
+        dockerfile: examples/cartp_python/Dockerfile
+        args:
+          - http_proxy
+          - https_proxy
+          - no_proxy
+      image: cartp-tp-python-local-3
+      volumes:
+        - ./sawtooth-sdk-python/:/project/sawtooth-sdk-python
+      container_name: cartp-tp-python-local-3
+      networks:
+        - my_blockchain_network_pbft
+      command: |
+        bash -c "
+          pwd
+          echo Executing_potogen
+          bin/protogen
+          echo cd_to_cartp_python
+          cd examples/cartp_python
+          python3 setup.py clean --all
+          python3 setup.py build
+          cartp-tp-python -C tcp://validator-3:4004
+        "
+      stop_signal: SIGKILL
+  
+    cartp-tp-python-4:
+      build:
+        context: ./sawtooth-sdk-python
+        dockerfile: examples/cartp_python/Dockerfile
+        args:
+          - http_proxy
+          - https_proxy
+          - no_proxy
+      image: cartp-tp-python-local-4
+      volumes:
+        - ./sawtooth-sdk-python/:/project/sawtooth-sdk-python
+      container_name: cartp-tp-python-local-4
+      networks:
+        - my_blockchain_network_pbft
+      command: |
+        bash -c "
+          pwd
+          echo Executing_potogen
+          bin/protogen
+          echo cd_to_cartp_python
+          cd examples/cartp_python
+          python3 setup.py clean --all
+          python3 setup.py build
+          cartp-tp-python -C tcp://validator-4:4004
+        "
+      stop_signal: SIGKILL
+
+    settings-tp-0:
+      image: hyperledger/sawtooth-settings-tp:chime
+      container_name: sawtooth-settings-tp-default-0
+      networks:
+        - my_blockchain_network_pbft
+      expose:
+        - 4004
+      command: settings-tp -C tcp://validator-0:4004
+      stop_signal: SIGKILL
+  
+    settings-tp-1:
+      image: hyperledger/sawtooth-settings-tp:chime
+      container_name: sawtooth-settings-tp-default-1
+      networks:
+        - my_blockchain_network_pbft
+      expose:
+        - 4004
+      command: settings-tp -C tcp://validator-1:4004
+      stop_signal: SIGKILL
+  
+    settings-tp-2:
+      image: hyperledger/sawtooth-settings-tp:chime
+      container_name: sawtooth-settings-tp-default-2
+      networks:
+        - my_blockchain_network_pbft
+      expose:
+        - 4004
+      command: settings-tp -C tcp://validator-2:4004
+      stop_signal: SIGKILL
+  
+    settings-tp-3:
+      image: hyperledger/sawtooth-settings-tp:chime
+      container_name: sawtooth-settings-tp-default-3
+      networks:
+        - my_blockchain_network_pbft
+      expose:
+        - 4004
+      command: settings-tp -C tcp://validator-3:4004
+      stop_signal: SIGKILL
+  
+    settings-tp-4:
+      image: hyperledger/sawtooth-settings-tp:chime
+      container_name: sawtooth-settings-tp-default-4
+      networks:
+        - my_blockchain_network_pbft
+      expose:
+        - 4004
+      command: settings-tp -C tcp://validator-4:4004
+      stop_signal: SIGKILL
+  
+# -------------=== pbft engines ===-------------
+
+    pbft-0:
+      image: hyperledger/sawtooth-pbft-engine:1.0
+      container_name: sawtooth-pbft-engine-default-0
+      networks:
+        - my_blockchain_network_pbft
+      command: pbft-engine -v --connect tcp://validator-0:5050
+      stop_signal: SIGKILL
+
+    pbft-1:
+      image: hyperledger/sawtooth-pbft-engine:1.0
+      container_name: sawtooth-pbft-engine-default-1
+      networks:
+        - my_blockchain_network_pbft
+      command: pbft-engine -v --connect tcp://validator-1:5050
+      stop_signal: SIGKILL
+
+    pbft-2:
+      image: hyperledger/sawtooth-pbft-engine:1.0
+      container_name: sawtooth-pbft-engine-default-2
+      networks:
+        - my_blockchain_network_pbft
+      command: pbft-engine -v --connect tcp://validator-2:5050
+      stop_signal: SIGKILL
+
+    pbft-3:
+      image: hyperledger/sawtooth-pbft-engine:1.0
+      container_name: sawtooth-pbft-engine-default-3
+      networks:
+        - my_blockchain_network_pbft
+      command: pbft-engine -v --connect tcp://validator-3:5050
+      stop_signal: SIGKILL
+
+    pbft-4:
+      image: hyperledger/sawtooth-pbft-engine:1.0
+      container_name: sawtooth-pbft-engine-default-4
+      networks:
+        - my_blockchain_network_pbft
+      command: pbft-engine -v --connect tcp://validator-4:5050
+      stop_signal: SIGKILL
+
+        
+    #########################################################
+    #
+    #  MODULE IPFS
+    #
+    #########################################################
+
+    module_ipfs:
+      networks:
+        - my_blockchain_network_pbft
+      build:
+        context: ./sawtooth-sdk-python
+        dockerfile: examples/IPFS_Module/Dockerfile
+      image: module_ipfs-0
+      ports:
+        - 81:81
+      volumes:
+        - ./sawtooth-sdk-python:/project/sawtooth-sdk-python
+      container_name: module_ipfs-0
+      command: |
+        bash -c "
+          pwd
+          echo Executing_potogen
+          bin/protogen
+          echo cd_to_IPFS_Module
+          cd examples/IPFS_Module
+          python3 main.py
+        "
+      stop_signal: SIGKILL
+
+
+    #########################################################
+    #
+    #  IPFS (api)
+    #
+    #########################################################
+
+    ipfs_api:
+      networks:
+        - my_blockchain_network_pbft
+      build:
+        context: ./ipfs/
+        dockerfile: ipfs-api/Dockerfile
+        args:
+          - http_proxy
+          - https_proxy
+          - no_proxy
+      image: ipfs_api-0
+      ports:
+        - "127.0.0.1:5000:5000"
+      container_name: ipfs_api-0
+      volumes:
+        - ./ipfs/ipfs-api:/ipfs-api
+      command: |
+        bash -c "
+          python3 main.py
+        "
+      stop_signal: SIGKILL
