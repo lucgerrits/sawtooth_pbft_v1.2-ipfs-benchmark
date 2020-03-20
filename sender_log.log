@@ -1,0 +1,36 @@
+
+============= TEST n°0 ============
+Found orphan containers (sawtooth-validator-default-0, sawtooth-settings-tp-default-3, ipfs_api-0, sawtooth-rest-api-default-2, sawtooth-load-balancer, sawtooth-pbft-engine-default-0, sawtooth-pbft-engine-default-2, sawtooth-rest-api-default-4, sawtooth-validator-default-2, sawtooth-pbft-engine-default-3, module_ipfs-0, sawtooth-validator-default-3, sawtooth-validator-default-1, sawtooth-rest-api-default-3, cartp-tp-python-local-4, sawtooth-rest-api-default-0, sawtooth-pbft-engine-default-1, cartp-tp-python-local-3, sawtooth-settings-tp-default-2, grafana, sawtooth-pbft-engine-default-4, sawtooth-settings-tp-default-0, sawtooth-settings-tp-default-1, cartp-tp-python-local-2, sawtooth-validator-default-4, sawtooth-rest-api-default-1, influxdb, cartp-tp-python-local-1, sawtooth-settings-tp-default-4, sawtooth-shell-default, cartp-tp-python-local-0) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+Creating sender-js ... 
+[1A[2KCreating sender-js ... [32mdone[0m[1BAttaching to sender-js
+sender-js    | ***** CONFIG *****
+sender-js    | nb_batch_parallele 3
+sender-js    | waiting_time 1000
+sender-js    | limit 10000
+sender-js    | Load config in nodejs => ok
+sender-js    | ***Transaction keys Given by command line***
+sender-js    | ***Batch keys Given by command line***
+sender-js    | ***cartp mode***
+sender-js    | 
+sender-js    | Sending batch list to:http://10.1.0.222:8080/batches
+sender-js    | 
+sender-js    | Response:
+sender-js    | {
+sender-js    |   "link": "http://10.1.0.222/batch_statuses?id=007eb69840dd58fdbe145c801810607f5650057a24cd2076f4bb1d7d778f59dc6d3ff870ebf0f0a0891c898ca76ed0f4c71188fec94930f54cdf3b80b7434b87"
+sender-js    | }
+sender-js    | 
+sender-js    | ***Transaction keys Given by command line***
+sender-js    | ***Batch keys Given by command line***
+sender-js    | ***cartp mode***
+sender-js    | 
+sender-js    | Sending batch list to:http://10.1.0.222:8080/batches
+sender-js    | 
+sender-js    | Response:
+sender-js    | {
+sender-js    |   "link": "http://10.1.0.222/batch_statuses?id=7aa341b291f357d1a40d7c9b4afa7dee44f1cbe9109f6627140fdca8b30ba35b7115b27fc9459e8622d1daf2c6c99e9c5d15c6f088c368bd258ca9653dcc170b"
+sender-js    | }
+sender-js    | 
+sender-js    | Wait 5 sec for 1st stabilization...
+sender-js exited with code 0
+
+============= END TEST n°0 ============

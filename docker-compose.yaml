@@ -29,8 +29,6 @@
       networks:
         - my_blockchain_network_pbft
       user: "104" #don't forget to do a chown
-      networks:
-        - my_blockchain_network_pbft
     influxdb:
       image: influxdb
       container_name: influxdb
@@ -723,7 +721,8 @@
 
     ipfs_api:
       networks:
-        - my_blockchain_network_pbft
+        my_blockchain_network_pbft:
+          ipv4_address: 10.1.0.201
       build:
         context: ./ipfs/
         dockerfile: ipfs-api/Dockerfile
