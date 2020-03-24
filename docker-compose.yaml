@@ -93,7 +93,7 @@
       volumes:
         - ./sawtooth-data/pbft-shared:/pbft-shared
         - ./sawtooth-data/sawtooth-validator-data:/var/lib/sawtooth-validator-data
-        - /media/100GB/validator-data/v0:/var/lib/sawtooth/
+        - $VALIDATORDATAPATH/v0:/var/lib/sawtooth/
       command: |
         bash -c "
           if [ -e /pbft-shared/validators/validator-0.priv ]; then
@@ -160,7 +160,7 @@
       volumes:
         - ./sawtooth-data/pbft-shared:/pbft-shared
         - ./sawtooth-data/sawtooth-validator-data:/var/lib/sawtooth-validator-data
-        - /media/100GB/validator-data/v1:/var/lib/sawtooth/
+        - $VALIDATORDATAPATH/v1:/var/lib/sawtooth/
       command: |
         bash -c "
           if [ -e /pbft-shared/validators/validator-1.priv ]; then
@@ -199,7 +199,7 @@
       volumes:
         - ./sawtooth-data/pbft-shared:/pbft-shared
         - ./sawtooth-data/sawtooth-validator-data:/var/lib/sawtooth-validator-data
-        - /media/100GB/validator-data/v2:/var/lib/sawtooth/
+        - $VALIDATORDATAPATH/v2:/var/lib/sawtooth/
       command: |
         bash -c "
           if [ -e /pbft-shared/validators/validator-2.priv ]; then
@@ -239,7 +239,7 @@
       volumes:
         - ./sawtooth-data/pbft-shared:/pbft-shared
         - ./sawtooth-data/sawtooth-validator-data:/var/lib/sawtooth-validator-data
-        - /media/100GB/validator-data/v3:/var/lib/sawtooth/
+        - $VALIDATORDATAPATH/v3:/var/lib/sawtooth/
       command: |
         bash -c "
           if [ -e /pbft-shared/validators/validator-3.priv ]; then
@@ -280,7 +280,7 @@
       volumes:
         - ./sawtooth-data/pbft-shared:/pbft-shared
         - ./sawtooth-data/sawtooth-validator-data:/var/lib/sawtooth-validator-data
-        - /media/100GB/validator-data/v4:/var/lib/sawtooth/
+        - $VALIDATORDATAPATH/v4:/var/lib/sawtooth/
       command:  |
         bash -c "
           if [ -e /pbft-shared/validators/validator-4.priv ]; then

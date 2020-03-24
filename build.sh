@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# VALIDATORDATAPATH="$VALIDATORDATAPATH/"
+# VALIDATORDATAPATH="/media/100GB/validator-data"
+
+#use env:
+export $(grep -v '^#' .env | xargs -d '\n')
+
 do_build () {
     if [ ! -d ./sawtooth-sdk-python ]; then
         echo -n "Can't find sawtooth-sdk-python"
@@ -18,20 +24,20 @@ do_build () {
     echo " => OK"
 
     echo "Delete validator data"
-    if [ ! -d ./sawtooth-data/validator-data ]; then
-        du -sh ./sawtooth-data/validator-data
+    if [ ! -d $VALIDATORDATAPATH ]; then
+        du -sh $VALIDATORDATAPATH
     fi
-    rm -rf ./sawtooth-data/validator-data
+    rm -rf $VALIDATORDATAPATH
     rm -rf ./sawtooth-data/pbft-shared
     echo "Done"
 
     echo "make validator data dir"
-    mkdir -p ./sawtooth-data/validator-data
-    mkdir -p ./sawtooth-data/validator-data/v0
-    mkdir -p ./sawtooth-data/validator-data/v1
-    mkdir -p ./sawtooth-data/validator-data/v2
-    mkdir -p ./sawtooth-data/validator-data/v3
-    mkdir -p ./sawtooth-data/validator-data/v4
+    mkdir -p $VALIDATORDATAPATH
+    mkdir -p $VALIDATORDATAPATH/v0
+    mkdir -p $VALIDATORDATAPATH/v1
+    mkdir -p $VALIDATORDATAPATH/v2
+    mkdir -p $VALIDATORDATAPATH/v3
+    mkdir -p $VALIDATORDATAPATH/v4
     mkdir -p ./sawtooth-data/pbft-shared
     echo "Done"
 
