@@ -14,6 +14,11 @@ Requires:
 * docker & docker-compose
 * python 3.7
 
+Don't forget to pull submodules: 
+```bash
+$ git submodule update --init --recursive
+```
+
 ## Build
 
 Build to copy and set all the necessary files in the project.
